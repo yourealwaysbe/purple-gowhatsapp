@@ -15,7 +15,7 @@
  *   You should have received a copy of the GNU General Public License
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
- 
+
  /*
   * Please note this is the third purple plugin I have ever written.
   * I still have no idea what I am doing.
@@ -82,31 +82,31 @@ gowhatsapp_get_icon_cb(PurpleHttpConnection *http_conn, PurpleHttpResponse *resp
     const gchar *url = purple_http_request_get_url(request);
     const gchar *data;
     gsize len;
-    
+
     active_icon_downloads--;
-    
+
     if (!buddy) {
         return;
     }
     if (!purple_http_response_is_successful(response)) {
         purple_debug_info(
-            "gowhatsapp", 
-            "Response not successful for icon for %s. Url is %s. Code is %d. Error is %s.\n", 
-            buddy->name, url, 
+            "gowhatsapp",
+            "Response not successful for icon for %s. Url is %s. Code is %d. Error is %s.\n",
+            buddy->name, url,
             purple_http_response_get_code(response), purple_http_response_get_error(response)
         );
         return;
     }
-    
+
     data = purple_http_response_get_data(response, &len);
-    
+
     if (!len || !*data) {
         return;
     }
-    
+
     purple_buddy_icons_set_for_user(
-        purple_buddy_get_account(buddy), 
-        purple_buddy_get_name(buddy), 
+        purple_buddy_get_account(buddy),
+        purple_buddy_get_name(buddy),
         g_memdup(data, len), len, url
     );
     // TODO: investigate possible memory leak – is data freed with response somewhere?
@@ -132,12 +132,12 @@ static gboolean
 gowhatsapp_get_icon_queuepop(gpointer data)
 {
     PurpleBuddy *buddy = data;
-    
+
     // Only allow 4 simultaneous downloads
     if (active_icon_downloads > 4) {
         return TRUE;
     }
-    
+
     gowhatsapp_get_icon_now(buddy);
     return FALSE;
 }
@@ -214,7 +214,7 @@ gowhatsapp_message_newer_than_last_session (GoWhatsappAccount *gwa, const time_t
 
 /*
  * Builds a persistent list of IDs of messages already received.
- * 
+ *
  * @return Message ID is new.
  */
 gboolean
@@ -591,7 +591,7 @@ gowhatsapp_login(PurpleAccount *account)
         restore_session,
         download_directory);
     g_free(download_directory);
-    
+
 }
 
 static void
@@ -666,9 +666,9 @@ gowhatsapp_new_xfer(PurpleConnection *pc, const char *who)
     GoWhatsappAccount *gwa = purple_connection_get_protocol_data(pc);
     PurpleXfer *xfer;
     //SkypeWebFileTransfer *swft;
-    
+
     xfer = purple_xfer_new(gwa->account, PURPLE_XFER_TYPE_SEND, who);
-    
+
     /*
     swft = g_new0(SkypeWebFileTransfer, 1);
     swft->sa = sa;
@@ -676,11 +676,11 @@ gowhatsapp_new_xfer(PurpleConnection *pc, const char *who)
     swft->xfer = xfer;
     purple_xfer_set_protocol_data(xfer, swft);
     * */
-    
+
     purple_xfer_set_init_fnc(xfer, gowhatsapp_xfer_send_init);
     purple_xfer_set_request_denied_fnc(xfer, gowhatsapp_free_xfer);
     purple_xfer_set_cancel_send_fnc(xfer, gowhatsapp_free_xfer);
-    
+
     return xfer;
 }
 
@@ -719,14 +719,14 @@ gowhatsapp_add_account_options(GList *account_options)
                 TRUE
                 );
     account_options = g_list_append(account_options, option);
-    
+
     option = purple_account_option_bool_new(
                 _("Fetch contact list from phone on connect"),
                 GOWHATSAPP_FETCH_CONTACTS_OPTION,
                 TRUE
                 );
     account_options = g_list_append(account_options, option);
-    
+
     #ifndef DISABLE_HTTP
     option = purple_account_option_bool_new(
                 _("Download user profile pictures (may cause GUI hiccups after connecting)"),
@@ -1066,7 +1066,7 @@ gowhatsapp_process_message_bridge_mainthread(gpointer data)
 /*
  * Handler for a message received by go-whatsapp.
  * Called by go-whatsapp (outside of the GTK eventloop).
- * 
+ *
  * Yes, this is indeed neccessary – we checked.
  */
 void
