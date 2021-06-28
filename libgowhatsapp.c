@@ -267,6 +267,31 @@ PurpleConversation *gowhatsapp_find_conversation(char *username, PurpleAccount *
     return conv;
 }
 
+PurpleConvChat *gowhatsapp_find_group_chat(char *chatname, char *username, PurpleAccount *account, PurpleConnection *pc) {
+
+    PurpleConvChat *chat = purple_conversations_find_chat_with_account(chatname, account);
+    if (chat == NULL) {
+        chat = purple_chat_new(account, chatname, NULL);
+        purple_blist_add_chat(chat, NULL, NULL);
+    }
+
+    if (username != NULL) {
+        purple_chat_conversation_add_user(chat, username, NULL, PURPLE_CBFLAGS_NONE, FALSE);
+    }
+
+    // This is the magic that triggers the chat to actually open.
+    serv_got_joined_chat(pc, 1, chatname);
+
+    return chat;
+}
+
+static int gowhatsapp_remotejid_is_group_chat(char *remoteJid) {
+    char *suffix = strrchr(remoteJid, '@');
+    if( suffix != NULL )
+        return strcmp(suffix, "@g.us") == 0;
+    return( -1 );
+}
+
 static void gowhatsapp_refresh_contactlist(PurpleConnection *pc, gowhatsapp_message_t *gwamsg)
 {
     GoWhatsappAccount *gwa = purple_connection_get_protocol_data(pc);
@@ -279,22 +304,15 @@ static void gowhatsapp_refresh_contactlist(PurpleConnection *pc, gowhatsapp_mess
         return;
     }
 
+    if (gowhatsapp_remotejid_is_group_chat(gwamsg->remoteJid)) {
+        return;
+    }
+
     char *display_name = gwamsg->remoteJid;
     if (strlen(gwamsg->text)) {
         display_name = gwamsg->text;
     }
 
-    PurpleBuddy *buddy = purple_blist_find_buddy(gwa->account, gwamsg->remoteJid);
-    if (!buddy) {
-        PurpleGroup *group = purple_blist_find_group("Whatsapp");
-        if (!group) {
-            group = purple_group_new("Whatsapp");
-            purple_blist_add_group(group, NULL);
-        }
-        buddy = purple_buddy_new(gwa->account, gwamsg->remoteJid, display_name);
-        purple_blist_add_buddy(buddy, NULL, group, NULL);
-        gowhatsapp_assume_buddy_online(gwa->account, buddy);
-    }
 }
 
 static void gowhatsapp_refresh_presence(PurpleConnection *pc, gowhatsapp_message_t *gwamsg)
@@ -337,18 +355,25 @@ gowhatsapp_display_message(PurpleConnection *pc, gowhatsapp_message_t *gwamsg)
         } else {
             flags |= PURPLE_MESSAGE_RECV;
         }
-        if (gwamsg->fromMe || (gwamsg->senderJid && *gwamsg->senderJid)) {
-            PurpleConversation *conv = gowhatsapp_find_conversation(gwamsg->remoteJid, gwa->account);
-            if (gwamsg->senderJid && *gwamsg->senderJid) {
-                // participants in group chats have their senderJid supplied
-                purple_conversation_write(conv, gwamsg->senderJid, content, flags, gwamsg->timestamp);
-            } else if (gwamsg->fromMe) {
+        if (gowhatsapp_remotejid_is_group_chat(gwamsg->remoteJid)) {
+            if (gwamsg->fromMe) {
+                PurpleConvChat *chat = gowhatsapp_find_group_chat(gwamsg->remoteJid, NULL, gwa->account, pc);
                 // display message sent from own account (but other device) here
-                purple_conversation_write(conv, gwamsg->remoteJid, content, flags, gwamsg->timestamp);
+                purple_conv_chat_write(chat, gwamsg->remoteJid, content, flags, gwamsg->timestamp);
+            } else {
+                PurpleConvChat *chat = gowhatsapp_find_group_chat(gwamsg->remoteJid, gwamsg->senderJid, gwa->account, pc);
+                // participants in group chats have their senderJid supplied
+                purple_conv_chat_write(chat, gwamsg->senderJid, content, flags, gwamsg->timestamp);
             }
         } else {
-            // normal mode: direct incoming message
-            purple_serv_got_im(pc, gwamsg->remoteJid, content, flags, gwamsg->timestamp);
+            if (gwamsg->fromMe) {
+                PurpleConversation *conv = gowhatsapp_find_conversation(gwamsg->remoteJid, gwa->account);
+                // display message sent from own account (but other device) here
+                purple_conversation_write(conv, gwamsg->remoteJid, content, flags, gwamsg->timestamp);
+            } else {
+                // normal mode: direct incoming message
+                purple_serv_got_im(pc, gwamsg->remoteJid, content, flags, gwamsg->timestamp);
+            }
         }
         g_free(content);
     }
