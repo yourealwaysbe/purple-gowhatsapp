@@ -292,6 +292,20 @@ static int gowhatsapp_remotejid_is_group_chat(char *remoteJid) {
     return( -1 );
 }
 
+static void gowhatsapp_ensure_buddy(PurpleAccount *pa, char *remoteJid, char *display_name) {
+    PurpleBuddy *buddy = purple_blist_find_buddy(pa, remoteJid);
+    if (!buddy) {
+        PurpleGroup *group = purple_blist_find_group("Whatsapp");
+        if (!group) {
+            group = purple_group_new("Whatsapp");
+            purple_blist_add_group(group, NULL);
+        }
+        buddy = purple_buddy_new(pa, remoteJid, display_name);
+        purple_blist_add_buddy(buddy, NULL, group, NULL);
+        gowhatsapp_assume_buddy_online(pa, buddy);
+    }
+}
+
 static void gowhatsapp_refresh_contactlist(PurpleConnection *pc, gowhatsapp_message_t *gwamsg)
 {
     GoWhatsappAccount *gwa = purple_connection_get_protocol_data(pc);
@@ -313,6 +327,7 @@ static void gowhatsapp_refresh_contactlist(PurpleConnection *pc, gowhatsapp_mess
         display_name = gwamsg->text;
     }
 
+    gowhatsapp_ensure_buddy(gwa->account, gwamsg->remoteJid, display_name);
 }
 
 static void gowhatsapp_refresh_presence(PurpleConnection *pc, gowhatsapp_message_t *gwamsg)
@@ -371,6 +386,10 @@ gowhatsapp_display_message(PurpleConnection *pc, gowhatsapp_message_t *gwamsg)
                 // display message sent from own account (but other device) here
                 purple_conversation_write(conv, gwamsg->remoteJid, content, flags, gwamsg->timestamp);
             } else {
+                // messages sometimes arrive before buddy has been
+                // created... this method will be missing a display
+                // name, but i don't think i ever saw one of them anyway
+                gowhatsapp_ensure_buddy(gwa->account, gwamsg->remoteJid, gwamsg->remoteJid);
                 // normal mode: direct incoming message
                 purple_serv_got_im(pc, gwamsg->remoteJid, content, flags, gwamsg->timestamp);
             }
