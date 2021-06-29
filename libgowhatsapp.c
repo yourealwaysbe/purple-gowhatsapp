@@ -258,7 +258,7 @@ gowhatsapp_append_message_id_if_not_exists(PurpleAccount *account, char *message
  * Borrowed from
  * https://github.com/hoehermann/libpurple-signald/blob/master/groups.c
  */
-GList * gowhatsapp_chat_info(PurpleConnection *pc)
+static GList * gowhatsapp_chat_info(PurpleConnection *pc)
 {
     GList *infos = NULL;
 
@@ -277,7 +277,7 @@ GList * gowhatsapp_chat_info(PurpleConnection *pc)
  * Borrowed from
  * https://github.com/hoehermann/libpurple-signald/blob/master/groups.c
  */
-GHashTable * gowhatsapp_chat_info_defaults(
+static GHashTable * gowhatsapp_chat_info_defaults(
     PurpleConnection *pc, const char *chat_name
 ) {
     GHashTable *defaults;
@@ -295,12 +295,25 @@ GHashTable * gowhatsapp_chat_info_defaults(
  * Borrowed from
  * https://github.com/hoehermann/libpurple-signald/blob/master/groups.c
  */
-void
+static void
 gowhatsapp_set_chat_topic(PurpleConnection *pc, int id, const char *topic)
 {
     // Nothing to do here. For some reason this callback has to be
     // registered if Pidgin is going to enable the "Alias..." menu
     // option in the conversation.
+}
+
+/*
+ * Borrowed from:
+ * https://github.com/matrix-org/purple-matrix/blob/master/libmatrix.c
+ *
+ * Get the name of a chat (as passed to serv_got_joined_chat) given the
+ * chat_info entries. For us this is the room id so this is easy
+ */
+static char *gowhatsapp_get_chat_name(GHashTable *components)
+{
+    const char *jid= g_hash_table_lookup(components, "remoteJid");
+    return g_strdup(jid);
 }
 
 static PurpleGroup * gowhatsapp_get_purple_group() {
@@ -1057,7 +1070,9 @@ plugin_init(PurplePlugin *plugin)
     /*
     prpl_info->send_typing = discord_send_typing;
     prpl_info->join_chat = discord_join_chat;
-    prpl_info->get_chat_name = discord_get_chat_name;
+    */
+    prpl_info->get_chat_name = gowhatsapp_get_chat_name;
+    /*
     prpl_info->find_blist_chat = discord_find_chat;
     prpl_info->chat_invite = discord_chat_invite;
     */
