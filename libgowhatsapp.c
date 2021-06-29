@@ -267,22 +267,38 @@ PurpleConversation *gowhatsapp_find_conversation(char *username, PurpleAccount *
     return conv;
 }
 
-PurpleConvChat *gowhatsapp_find_group_chat(char *chatname, char *username, PurpleAccount *account, PurpleConnection *pc) {
+PurpleConvChat *gowhatsapp_find_group_chat(char *remoteJid, char *senderJid, PurpleAccount *account, PurpleConnection *pc) {
 
-    PurpleConvChat *chat = purple_conversations_find_chat_with_account(chatname, account);
-    if (chat == NULL) {
-        chat = purple_chat_new(account, chatname, NULL);
+    PurpleConvChat *conv_chat = purple_conversations_find_chat_with_account(remoteJid, account);
+    if (conv_chat == NULL) {
+        GHashTable *comp = g_hash_table_new_full(
+            g_str_hash, g_str_equal, NULL, g_free
+        );
+
+        g_hash_table_insert(comp, "remoteJid", g_strdup(remoteJid));
+
+        PurpleChat *chat = purple_chat_new(account, remoteJid, comp);
         purple_blist_add_chat(chat, NULL, NULL);
+
+        // use hash of jid for chat id number
+        PurpleConversation *conv = serv_got_joined_chat(
+            pc, g_str_hash(remoteJid), remoteJid
+        );
+
+        if (conv != NULL) {
+            purple_conversation_set_data(conv, "remoteJid", g_strdup(remoteJid));
+        }
+
+        conv_chat = PURPLE_CONV_CHAT(conv);
     }
 
-    if (username != NULL) {
-        purple_chat_conversation_add_user(chat, username, NULL, PURPLE_CBFLAGS_NONE, FALSE);
+    if (conv_chat != NULL && senderJid != NULL) {
+        // TODO: only add if user not already in chat -- currently this
+        // causes a loop!
+        // purple_chat_conversation_add_user(conv, senderJid, NULL, PURPLE_CBFLAGS_NONE, FALSE);
     }
 
-    // This is the magic that triggers the chat to actually open.
-    serv_got_joined_chat(pc, 1, chatname);
-
-    return chat;
+    return conv_chat;
 }
 
 static int gowhatsapp_remotejid_is_group_chat(char *remoteJid) {
@@ -292,18 +308,53 @@ static int gowhatsapp_remotejid_is_group_chat(char *remoteJid) {
     return( -1 );
 }
 
-static void gowhatsapp_ensure_buddy(PurpleAccount *pa, char *remoteJid, char *display_name) {
-    PurpleBuddy *buddy = purple_blist_find_buddy(pa, remoteJid);
-    if (!buddy) {
-        PurpleGroup *group = purple_blist_find_group("Whatsapp");
-        if (!group) {
-            group = purple_group_new("Whatsapp");
-            purple_blist_add_group(group, NULL);
-        }
-        buddy = purple_buddy_new(pa, remoteJid, display_name);
-        purple_blist_add_buddy(buddy, NULL, group, NULL);
-        gowhatsapp_assume_buddy_online(pa, buddy);
+/*
+ * Borrowed from
+ * https://github.com/hoehermann/libpurple-signald/blob/master/groups.c
+ */
+GList * gowhatsapp_chat_info(PurpleConnection *pc)
+{
+    GList *infos = NULL;
+
+    struct proto_chat_entry *pce;
+
+    pce = g_new0(struct proto_chat_entry, 1);
+    pce->label = _("_Group Jid:");
+    pce->identifier = "remoteJid";
+    pce->required = TRUE;
+    infos = g_list_append(infos, pce);
+
+    return infos;
+}
+
+/*
+ * Borrowed from
+ * https://github.com/hoehermann/libpurple-signald/blob/master/groups.c
+ */
+GHashTable * gowhatsapp_chat_info_defaults(
+    PurpleConnection *pc, const char *chat_name
+) {
+    GHashTable *defaults;
+
+    defaults = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, g_free);
+
+    if (chat_name != NULL) {
+        g_hash_table_insert(defaults, "remoteJid", g_strdup(chat_name));
     }
+
+    return defaults;
+}
+
+/*
+ * Borrowed from
+ * https://github.com/hoehermann/libpurple-signald/blob/master/groups.c
+ */
+void
+gowhatsapp_set_chat_topic(PurpleConnection *pc, int id, const char *topic)
+{
+    // Nothing to do here. For some reason this callback has to be
+    // registered if Pidgin is going to enable the "Alias..." menu
+    // option in the conversation.
 }
 
 static void gowhatsapp_refresh_contactlist(PurpleConnection *pc, gowhatsapp_message_t *gwamsg)
@@ -327,7 +378,17 @@ static void gowhatsapp_refresh_contactlist(PurpleConnection *pc, gowhatsapp_mess
         display_name = gwamsg->text;
     }
 
-    gowhatsapp_ensure_buddy(gwa->account, gwamsg->remoteJid, display_name);
+    PurpleBuddy *buddy = purple_blist_find_buddy(gwa->account, gwamsg->remoteJid);
+    if (!buddy) {
+        PurpleGroup *group = purple_blist_find_group("Whatsapp");
+        if (!group) {
+            group = purple_group_new("Whatsapp");
+            purple_blist_add_group(group, NULL);
+        }
+        buddy = purple_buddy_new(gwa->account, gwamsg->remoteJid, display_name);
+        purple_blist_add_buddy(buddy, NULL, group, NULL);
+        gowhatsapp_assume_buddy_online(gwa->account, buddy);
+    }
 }
 
 static void gowhatsapp_refresh_presence(PurpleConnection *pc, gowhatsapp_message_t *gwamsg)
@@ -386,10 +447,6 @@ gowhatsapp_display_message(PurpleConnection *pc, gowhatsapp_message_t *gwamsg)
                 // display message sent from own account (but other device) here
                 purple_conversation_write(conv, gwamsg->remoteJid, content, flags, gwamsg->timestamp);
             } else {
-                // messages sometimes arrive before buddy has been
-                // created... this method will be missing a display
-                // name, but i don't think i ever saw one of them anyway
-                gowhatsapp_ensure_buddy(gwa->account, gwamsg->remoteJid, gwamsg->remoteJid);
                 // normal mode: direct incoming message
                 purple_serv_got_im(pc, gwamsg->remoteJid, content, flags, gwamsg->timestamp);
             }
@@ -681,6 +738,21 @@ gowhatsapp_send_im(PurpleConnection *pc, const gchar *who, const gchar *message,
     }
 }
 
+static int
+gowhatsapp_send_chat(PurpleConnection *pc, int id, const gchar *message, PurpleMessageFlags flags) {
+    purple_serv_got_im(pc, "login@s.whatsapp.net", "send chat", PURPLE_MESSAGE_RECV, 0);
+
+    PurpleConversation *conv = purple_find_chat(pc, id);
+    if (conv != NULL) {
+        gchar *who = (gchar *)purple_conversation_get_data(conv, "remoteJid");
+        if (who != NULL) {
+            // same as sending an IM in whatsapp
+            return gowhatsapp_send_im(pc, who, message, flags);
+        }
+    }
+    return -70; // TODO: what should this really be?
+}
+
 static void
 gowhatsapp_free_xfer(PurpleXfer *xfer)
 {
@@ -926,10 +998,8 @@ plugin_init(PurplePlugin *plugin)
     prpl_info->set_idle = discord_set_idle;
     */
     prpl_info->status_types = gowhatsapp_status_types; // this actually needs to exist, else the protocol cannot be set to "online"
-    /*
-    prpl_info->chat_info = discord_chat_info;
-    prpl_info->chat_info_defaults = discord_chat_info_defaults;
-    */
+    prpl_info->chat_info = gowhatsapp_chat_info;
+    prpl_info->chat_info_defaults = gowhatsapp_chat_info_defaults;
     prpl_info->login = gowhatsapp_login;
     prpl_info->close = gowhatsapp_close;
     prpl_info->send_im = gowhatsapp_send_im;
@@ -939,8 +1009,10 @@ plugin_init(PurplePlugin *plugin)
     prpl_info->get_chat_name = discord_get_chat_name;
     prpl_info->find_blist_chat = discord_find_chat;
     prpl_info->chat_invite = discord_chat_invite;
-    prpl_info->chat_send = discord_chat_send;
-    prpl_info->set_chat_topic = discord_chat_set_topic;
+    */
+    prpl_info->chat_send = gowhatsapp_send_chat;
+    prpl_info->set_chat_topic = gowhatsapp_set_chat_topic;
+    /*
     prpl_info->get_cb_real_name = discord_get_real_name;
     */
     prpl_info->add_buddy = gowhatsapp_add_buddy;
