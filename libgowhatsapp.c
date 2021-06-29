@@ -267,6 +267,20 @@ PurpleConversation *gowhatsapp_find_conversation(char *username, PurpleAccount *
     return conv;
 }
 
+static int gowhatsapp_user_in_conv_chat(PurpleConvChat *conv_chat, char *userJid) {
+    GList *users = purple_conv_chat_get_users(conv_chat);
+
+    while (users != NULL) {
+        PurpleConvChatBuddy *buddy = (PurpleConvChatBuddy *) users->data;
+        if (!strcmp(buddy->name, userJid)) {
+            return TRUE;
+        }
+        users = users->next;
+    }
+
+    return FALSE;
+}
+
 PurpleConvChat *gowhatsapp_find_group_chat(char *remoteJid, char *senderJid, PurpleAccount *account, PurpleConnection *pc) {
 
     PurpleConvChat *conv_chat = purple_conversations_find_chat_with_account(remoteJid, account);
@@ -293,9 +307,11 @@ PurpleConvChat *gowhatsapp_find_group_chat(char *remoteJid, char *senderJid, Pur
     }
 
     if (conv_chat != NULL && senderJid != NULL) {
-        // TODO: only add if user not already in chat -- currently this
-        // causes a loop!
-        // purple_chat_conversation_add_user(conv, senderJid, NULL, PURPLE_CBFLAGS_NONE, FALSE);
+        if (!gowhatsapp_user_in_conv_chat(conv_chat, senderJid)) {
+            purple_chat_conversation_add_user(
+                conv_chat, senderJid, NULL, PURPLE_CBFLAGS_NONE, FALSE
+            );
+        }
     }
 
     return conv_chat;
