@@ -313,7 +313,7 @@ static PurpleGroup * gowhatsapp_get_purple_group() {
 }
 
 static PurpleChat * gowhatsapp_refresh_group_chat(
-    PurpleAccount *account, char *remoteJid
+    PurpleAccount *account, char *remoteJid, char *display_name
 ) {
     PurpleChat *chat = purple_blist_find_chat(account, remoteJid);
 
@@ -328,6 +328,10 @@ static PurpleChat * gowhatsapp_refresh_group_chat(
 
         chat = purple_chat_new(account, remoteJid, comp);
         purple_blist_add_chat(chat, group, NULL);
+    }
+
+    if (chat != NULL && display_name != NULL) {
+        purple_blist_alias_chat(chat, display_name);
     }
 
     return chat;
@@ -370,7 +374,9 @@ static void gowhatsapp_refresh_contactlist(PurpleConnection *pc, gowhatsapp_mess
     }
 
     if (gowhatsapp_remotejid_is_group_chat(gwamsg->remoteJid)) {
-        gowhatsapp_refresh_group_chat(gwa->account, gwamsg->remoteJid);
+        gowhatsapp_refresh_group_chat(
+            gwa->account, gwamsg->remoteJid, gwamsg->text
+        );
     } else {
         gowhatsapp_refresh_buddy(gwa->account, gwamsg);
     }
@@ -423,7 +429,7 @@ PurpleConvChat *gowhatsapp_find_group_chat(char *remoteJid, char *senderJid, Pur
         PurpleChat *chat = purple_blist_find_chat(account, remoteJid);
 
         if (chat == NULL) {
-            chat = gowhatsapp_refresh_group_chat(account, remoteJid);
+            chat = gowhatsapp_refresh_group_chat(account, remoteJid, NULL);
         }
 
         // use hash of jid for chat id number
