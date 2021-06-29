@@ -254,76 +254,6 @@ gowhatsapp_append_message_id_if_not_exists(PurpleAccount *account, char *message
     }
 }
 
-PurpleConversation *gowhatsapp_find_conversation(char *username, PurpleAccount *account) {
-    PurpleIMConversation *imconv = purple_conversations_find_im_with_account(username, account);
-    if (imconv == NULL) {
-        imconv = purple_im_conversation_new(account, username);
-    }
-    PurpleConversation *conv = PURPLE_CONVERSATION(imconv);
-    if (conv == NULL) {
-        imconv = purple_conversations_find_im_with_account(username, account);
-        conv = PURPLE_CONVERSATION(imconv);
-    }
-    return conv;
-}
-
-static int gowhatsapp_user_in_conv_chat(PurpleConvChat *conv_chat, char *userJid) {
-    GList *users = purple_conv_chat_get_users(conv_chat);
-
-    while (users != NULL) {
-        PurpleConvChatBuddy *buddy = (PurpleConvChatBuddy *) users->data;
-        if (!strcmp(buddy->name, userJid)) {
-            return TRUE;
-        }
-        users = users->next;
-    }
-
-    return FALSE;
-}
-
-PurpleConvChat *gowhatsapp_find_group_chat(char *remoteJid, char *senderJid, PurpleAccount *account, PurpleConnection *pc) {
-
-    PurpleConvChat *conv_chat = purple_conversations_find_chat_with_account(remoteJid, account);
-    if (conv_chat == NULL) {
-        GHashTable *comp = g_hash_table_new_full(
-            g_str_hash, g_str_equal, NULL, g_free
-        );
-
-        g_hash_table_insert(comp, "remoteJid", g_strdup(remoteJid));
-
-        PurpleChat *chat = purple_chat_new(account, remoteJid, comp);
-        purple_blist_add_chat(chat, NULL, NULL);
-
-        // use hash of jid for chat id number
-        PurpleConversation *conv = serv_got_joined_chat(
-            pc, g_str_hash(remoteJid), remoteJid
-        );
-
-        if (conv != NULL) {
-            purple_conversation_set_data(conv, "remoteJid", g_strdup(remoteJid));
-        }
-
-        conv_chat = PURPLE_CONV_CHAT(conv);
-    }
-
-    if (conv_chat != NULL && senderJid != NULL) {
-        if (!gowhatsapp_user_in_conv_chat(conv_chat, senderJid)) {
-            purple_chat_conversation_add_user(
-                conv_chat, senderJid, NULL, PURPLE_CBFLAGS_NONE, FALSE
-            );
-        }
-    }
-
-    return conv_chat;
-}
-
-static int gowhatsapp_remotejid_is_group_chat(char *remoteJid) {
-    char *suffix = strrchr(remoteJid, '@');
-    if( suffix != NULL )
-        return strcmp(suffix, "@g.us") == 0;
-    return( -1 );
-}
-
 /*
  * Borrowed from
  * https://github.com/hoehermann/libpurple-signald/blob/master/groups.c
@@ -373,6 +303,60 @@ gowhatsapp_set_chat_topic(PurpleConnection *pc, int id, const char *topic)
     // option in the conversation.
 }
 
+static PurpleGroup * gowhatsapp_get_purple_group() {
+    PurpleGroup *group = purple_blist_find_group("Whatsapp");
+    if (!group) {
+        group = purple_group_new("Whatsapp");
+        purple_blist_add_group(group, NULL);
+    }
+    return group;
+}
+
+static PurpleChat * gowhatsapp_refresh_group_chat(
+    PurpleAccount *account, char *remoteJid
+) {
+    PurpleChat *chat = purple_blist_find_chat(account, remoteJid);
+
+    if (chat == NULL) {
+        PurpleGroup *group = gowhatsapp_get_purple_group();
+
+        GHashTable *comp = g_hash_table_new_full(
+            g_str_hash, g_str_equal, NULL, g_free
+        );
+
+        g_hash_table_insert(comp, "remoteJid", g_strdup(remoteJid));
+
+        chat = purple_chat_new(account, remoteJid, comp);
+        purple_blist_add_chat(chat, group, NULL);
+    }
+
+    return chat;
+}
+
+static void gowhatsapp_refresh_buddy(
+    PurpleAccount *account, gowhatsapp_message_t *gwamsg
+) {
+    char *display_name = gwamsg->remoteJid;
+    if (strlen(gwamsg->text)) {
+        display_name = gwamsg->text;
+    }
+
+    PurpleBuddy *buddy = purple_blist_find_buddy(account, gwamsg->remoteJid);
+    if (!buddy) {
+        PurpleGroup *group = gowhatsapp_get_purple_group();
+        buddy = purple_buddy_new(account, gwamsg->remoteJid, display_name);
+        purple_blist_add_buddy(buddy, NULL, group, NULL);
+        gowhatsapp_assume_buddy_online(account, buddy);
+    }
+}
+
+static int gowhatsapp_remotejid_is_group_chat(char *remoteJid) {
+    char *suffix = strrchr(remoteJid, '@');
+    if( suffix != NULL )
+        return strcmp(suffix, "@g.us") == 0;
+    return( -1 );
+}
+
 static void gowhatsapp_refresh_contactlist(PurpleConnection *pc, gowhatsapp_message_t *gwamsg)
 {
     GoWhatsappAccount *gwa = purple_connection_get_protocol_data(pc);
@@ -386,24 +370,9 @@ static void gowhatsapp_refresh_contactlist(PurpleConnection *pc, gowhatsapp_mess
     }
 
     if (gowhatsapp_remotejid_is_group_chat(gwamsg->remoteJid)) {
-        return;
-    }
-
-    char *display_name = gwamsg->remoteJid;
-    if (strlen(gwamsg->text)) {
-        display_name = gwamsg->text;
-    }
-
-    PurpleBuddy *buddy = purple_blist_find_buddy(gwa->account, gwamsg->remoteJid);
-    if (!buddy) {
-        PurpleGroup *group = purple_blist_find_group("Whatsapp");
-        if (!group) {
-            group = purple_group_new("Whatsapp");
-            purple_blist_add_group(group, NULL);
-        }
-        buddy = purple_buddy_new(gwa->account, gwamsg->remoteJid, display_name);
-        purple_blist_add_buddy(buddy, NULL, group, NULL);
-        gowhatsapp_assume_buddy_online(gwa->account, buddy);
+        gowhatsapp_refresh_group_chat(gwa->account, gwamsg->remoteJid);
+    } else {
+        gowhatsapp_refresh_buddy(gwa->account, gwamsg);
     }
 }
 
@@ -418,6 +387,66 @@ static void gowhatsapp_refresh_presence(PurpleConnection *pc, gowhatsapp_message
             purple_blist_node_set_int(&buddy->node, "last_seen", lastseen);
         }
     }
+}
+
+PurpleConversation *gowhatsapp_find_conversation(char *username, PurpleAccount *account) {
+    PurpleIMConversation *imconv = purple_conversations_find_im_with_account(username, account);
+    if (imconv == NULL) {
+        imconv = purple_im_conversation_new(account, username);
+    }
+    PurpleConversation *conv = PURPLE_CONVERSATION(imconv);
+    if (conv == NULL) {
+        imconv = purple_conversations_find_im_with_account(username, account);
+        conv = PURPLE_CONVERSATION(imconv);
+    }
+    return conv;
+}
+
+static int gowhatsapp_user_in_conv_chat(PurpleConvChat *conv_chat, char *userJid) {
+    GList *users = purple_conv_chat_get_users(conv_chat);
+
+    while (users != NULL) {
+        PurpleConvChatBuddy *buddy = (PurpleConvChatBuddy *) users->data;
+        if (!strcmp(buddy->name, userJid)) {
+            return TRUE;
+        }
+        users = users->next;
+    }
+
+    return FALSE;
+}
+
+PurpleConvChat *gowhatsapp_find_group_chat(char *remoteJid, char *senderJid, PurpleAccount *account, PurpleConnection *pc) {
+
+    PurpleConvChat *conv_chat = purple_conversations_find_chat_with_account(remoteJid, account);
+    if (conv_chat == NULL) {
+        PurpleChat *chat = purple_blist_find_chat(account, remoteJid);
+
+        if (chat == NULL) {
+            chat = gowhatsapp_refresh_group_chat(account, remoteJid);
+        }
+
+        // use hash of jid for chat id number
+        PurpleConversation *conv = serv_got_joined_chat(
+            pc, g_str_hash(remoteJid), remoteJid
+        );
+
+        if (conv != NULL) {
+            purple_conversation_set_data(conv, "remoteJid", g_strdup(remoteJid));
+        }
+
+        conv_chat = PURPLE_CONV_CHAT(conv);
+    }
+
+    if (conv_chat != NULL && senderJid != NULL) {
+        if (!gowhatsapp_user_in_conv_chat(conv_chat, senderJid)) {
+            purple_chat_conversation_add_user(
+                conv_chat, senderJid, NULL, PURPLE_CBFLAGS_NONE, FALSE
+            );
+        }
+    }
+
+    return conv_chat;
 }
 
 void
