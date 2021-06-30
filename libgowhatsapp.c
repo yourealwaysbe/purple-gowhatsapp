@@ -288,11 +288,15 @@ static GHashTable * gowhatsapp_chat_info_defaults(
 ) {
     GHashTable *defaults;
 
-    defaults = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, g_free);
+    defaults = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 
     if (chat_name != NULL) {
-        g_hash_table_insert(defaults, "remoteJid", g_strdup(chat_name));
-        g_hash_table_insert(defaults, "topic", g_strdup(""));
+        g_hash_table_insert(
+            defaults, g_strdup("remoteJid"), g_strdup(chat_name)
+        );
+        g_hash_table_insert(
+            defaults, g_strdup("topic"), g_strdup("")
+        );
     }
 
     return defaults;
@@ -341,17 +345,20 @@ static PurpleChat * gowhatsapp_refresh_group_chat(
         PurpleGroup *group = gowhatsapp_get_purple_group();
 
         GHashTable *comp = g_hash_table_new_full(
-            g_str_hash, g_str_equal, NULL, g_free
+            g_str_hash, g_str_equal, g_free, g_free
         );
 
-        g_hash_table_insert(comp, "remoteJid", g_strdup(remoteJid));
+        g_hash_table_insert(comp, g_strdup("remoteJid"), g_strdup(remoteJid));
 
         chat = purple_chat_new(account, remoteJid, comp);
         purple_blist_add_chat(chat, group, NULL);
     }
 
     if (topic != NULL) {
-        g_hash_table_insert(chat->components, "topic", g_strdup(topic));
+        g_hash_table_insert(
+            chat->components, g_strdup("topic"), g_strdup(topic)
+        );
+        purple_blist_alias_chat(chat, topic);
     }
 
     return chat;
@@ -376,9 +383,9 @@ static void gowhatsapp_refresh_buddy(
 
 static int gowhatsapp_remotejid_is_group_chat(char *remoteJid) {
     char *suffix = strrchr(remoteJid, '@');
-    if( suffix != NULL )
+    if (suffix != NULL)
         return strcmp(suffix, "@g.us") == 0;
-    return( -1 );
+    return FALSE;
 }
 
 static void gowhatsapp_refresh_contactlist(PurpleConnection *pc, gowhatsapp_message_t *gwamsg)
@@ -872,15 +879,21 @@ gowhatsapp_send_im(PurpleConnection *pc, const gchar *who, const gchar *message,
 }
 
 static int
-gowhatsapp_send_chat(PurpleConnection *pc, int id, const gchar *message, PurpleMessageFlags flags) {
-    purple_serv_got_im(pc, "login@s.whatsapp.net", "send chat", PURPLE_MESSAGE_RECV, 0);
-
+gowhatsapp_send_chat(
+    PurpleConnection *pc, int id, const gchar *message, PurpleMessageFlags flags
+) {
     PurpleConversation *conv = purple_find_chat(pc, id);
     if (conv != NULL) {
         gchar *who = (gchar *)purple_conversation_get_data(conv, "remoteJid");
         if (who != NULL) {
             // same as sending an IM in whatsapp
-            return gowhatsapp_send_im(pc, who, message, flags);
+            int result = gowhatsapp_send_im(pc, who, message, flags);
+            if (result > 0) {
+                purple_conv_chat_write(
+                    PURPLE_CONV_CHAT(conv), who, message, flags, time(NULL)
+                );
+            }
+            return result;
         }
     }
     return -70; // TODO: what should this really be?
