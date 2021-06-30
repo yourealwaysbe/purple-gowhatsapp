@@ -364,6 +364,21 @@ static PurpleChat * gowhatsapp_refresh_group_chat(
     return chat;
 }
 
+/*
+ * Ensure buddy is in the buddy list
+ */
+static void gowhatsapp_ensure_buddy(
+    PurpleAccount *account, char *remoteJid, char *display_name
+) {
+    PurpleBuddy *buddy = purple_blist_find_buddy(account, remoteJid);
+    if (!buddy) {
+        PurpleGroup *group = gowhatsapp_get_purple_group();
+        buddy = purple_buddy_new(account, remoteJid, display_name);
+        purple_blist_add_buddy(buddy, NULL, group, NULL);
+        gowhatsapp_assume_buddy_online(account, buddy);
+    }
+}
+
 static void gowhatsapp_refresh_buddy(
     PurpleAccount *account, gowhatsapp_message_t *gwamsg
 ) {
@@ -372,13 +387,7 @@ static void gowhatsapp_refresh_buddy(
         display_name = gwamsg->text;
     }
 
-    PurpleBuddy *buddy = purple_blist_find_buddy(account, gwamsg->remoteJid);
-    if (!buddy) {
-        PurpleGroup *group = gowhatsapp_get_purple_group();
-        buddy = purple_buddy_new(account, gwamsg->remoteJid, display_name);
-        purple_blist_add_buddy(buddy, NULL, group, NULL);
-        gowhatsapp_assume_buddy_online(account, buddy);
-    }
+    gowhatsapp_ensure_buddy(account, gwamsg->remoteJid, display_name);
 }
 
 static int gowhatsapp_remotejid_is_group_chat(char *remoteJid) {
@@ -423,6 +432,8 @@ static void gowhatsapp_refresh_presence(PurpleConnection *pc, gowhatsapp_message
 }
 
 PurpleConversation *gowhatsapp_find_conversation(char *username, PurpleAccount *account) {
+    gowhatsapp_ensure_buddy(account, username, NULL);
+
     PurpleIMConversation *imconv = purple_conversations_find_im_with_account(username, account);
     if (imconv == NULL) {
         imconv = purple_im_conversation_new(account, username);
