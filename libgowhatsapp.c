@@ -337,15 +337,19 @@ static PurpleGroup * gowhatsapp_get_purple_group() {
 }
 
 /*
- * Add group chat to blist if fetch-contacts set. Updates existing group
- * chat if found.
+ * Add group chat to blist. Updates existing group chat if found. Only
+ * changes blist if fetch contacts is set.
  */
 static PurpleChat * gowhatsapp_ensure_group_chat_in_blist(
     PurpleAccount *account, const char *remoteJid, const char *topic
 ) {
+    gboolean fetch_contacts = purple_account_get_bool(
+        account, GOWHATSAPP_FETCH_CONTACTS_OPTION, TRUE
+    );
+
     PurpleChat *chat = purple_blist_find_chat(account, remoteJid);
 
-    if (chat == NULL) {
+    if (chat == NULL && fetch_contacts) {
         GHashTable *comp = g_hash_table_new_full(
             g_str_hash, g_str_equal, g_free, g_free
         );
@@ -357,7 +361,7 @@ static PurpleChat * gowhatsapp_ensure_group_chat_in_blist(
         purple_blist_add_chat(chat, group, NULL);
     }
 
-    if (topic != NULL) {
+    if (topic != NULL && fetch_contacts) {
         g_hash_table_insert(
             chat->components, g_strdup("topic"), g_strdup(topic)
         );
@@ -368,8 +372,8 @@ static PurpleChat * gowhatsapp_ensure_group_chat_in_blist(
 }
 
 /*
- * Ensure buddy in the buddy list (if user wants contacts fetched).
- * Updates existing entry if there is one.
+ * Ensure buddy in the buddy list. Updates existing entry if there is
+ * one. In both cases only if fetch contacts is enabled.
  *
  * Does not add login@s.whatsapp.net!
  */
@@ -393,7 +397,7 @@ static void gowhatsapp_ensure_buddy_in_blist(
         gowhatsapp_assume_buddy_online(account, buddy);
     }
 
-    if (buddy) {
+    if (buddy && fetch_contacts) {
         purple_blist_alias_buddy(buddy, display_name);
     }
 }
