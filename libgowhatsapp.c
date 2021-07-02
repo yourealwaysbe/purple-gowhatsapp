@@ -401,8 +401,9 @@ static PurpleChat * gowhatsapp_ensure_group_chat_in_blist(
     }
 
     if (topic != NULL && fetch_contacts) {
+        // components uses free on key (unlike above)
         g_hash_table_insert(
-            chat->components, "topic", g_strdup(topic)
+            purple_chat_get_components(chat), g_strdup("topic"), g_strdup(topic)
         );
         purple_blist_alias_chat(chat, topic);
     }
@@ -523,21 +524,19 @@ static int gowhatsapp_user_in_conv_chat(
 /*
  * Topic is the topic of the chat if not already known (may be null),
  * senderJid may be null, but else is used to add users sending messages
- * to the chats. Will only create a conversation if create_chat is
- * true.
+ * to the chats.
  */
 PurpleConvChat *gowhatsapp_find_group_chat(
     const char *remoteJid,
     const char *senderJid,
     const char *topic,
-    gboolean create_chat,
     PurpleConnection *pc
 ) {
     PurpleAccount *account = purple_connection_get_account(pc);
     PurpleConvChat *conv_chat =
         purple_conversations_find_chat_with_account(remoteJid, account);
 
-    if (conv_chat == NULL && create_chat) {
+    if (conv_chat == NULL) {
         gowhatsapp_ensure_group_chat_in_blist(account, remoteJid, topic);
 
         // use hash of jid for chat id number
@@ -567,8 +566,7 @@ static void gowhatsapp_join_chat(PurpleConnection *pc, GHashTable *data) {
     const char *remoteJid = g_hash_table_lookup(data, "remoteJid");
     const char *topic = g_hash_table_lookup(data, "topic");
     if (remoteJid != NULL) {
-        // creates (with TRUE arg) and does the open too...
-        gowhatsapp_find_group_chat(remoteJid, NULL, topic, TRUE, pc);
+        gowhatsapp_find_group_chat(remoteJid, NULL, topic, pc);
     }
 }
 
@@ -654,9 +652,8 @@ gowhatsapp_display_message(PurpleConnection *pc, gowhatsapp_message_t *gwamsg)
         }
         if (gowhatsapp_remotejid_is_group_chat(gwamsg->remoteJid)) {
             if (gwamsg->fromMe) {
-                // don't create chat if not joined
                 PurpleConvChat *chat = gowhatsapp_find_group_chat(
-                    gwamsg->remoteJid, NULL, NULL, FALSE, pc
+                    gwamsg->remoteJid, NULL, NULL, pc
                 );
                 if (chat != NULL) {
                     // display message sent from own account (but other device) here
@@ -671,7 +668,7 @@ gowhatsapp_display_message(PurpleConnection *pc, gowhatsapp_message_t *gwamsg)
             } else {
                 // don't create chat if not joined
                 PurpleConvChat *chat = gowhatsapp_find_group_chat(
-                    gwamsg->remoteJid, gwamsg->senderJid, NULL, FALSE, pc
+                    gwamsg->remoteJid, gwamsg->senderJid, NULL, pc
                 );
                 if (chat != NULL) {
                     // participants in group chats have their senderJid supplied
