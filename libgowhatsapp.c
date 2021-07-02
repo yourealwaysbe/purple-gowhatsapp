@@ -562,6 +562,39 @@ PurpleConvChat *gowhatsapp_find_group_chat(
     return conv_chat;
 }
 
+/*
+ * Largely borrowed from:
+ * https://github.com/EionRobb/purple-discord/blob/master/libdiscord.c
+ */
+PurpleChat * gowhatsapp_find_blist_chat(
+    PurpleAccount *account, const char *jid
+) {
+    PurpleBlistNode *node;
+
+    for (node = purple_blist_get_root();
+         node != NULL;
+         node = purple_blist_node_next(node, TRUE)) {
+        if (PURPLE_IS_CHAT(node)) {
+            PurpleChat *chat = PURPLE_CHAT(node);
+
+            if (purple_chat_get_account(chat) != account) {
+                continue;
+            }
+
+            GHashTable *components = purple_chat_get_components(chat);
+            const gchar *chat_jid = g_hash_table_lookup(
+                components, "remoteJid"
+            );
+
+            if (purple_strequal(chat_jid, jid)) {
+                return chat;
+            }
+        }
+    }
+
+    return NULL;
+}
+
 static void gowhatsapp_join_chat(PurpleConnection *pc, GHashTable *data) {
     const char *remoteJid = g_hash_table_lookup(data, "remoteJid");
     const char *topic = g_hash_table_lookup(data, "topic");
@@ -1270,8 +1303,8 @@ plugin_init(PurplePlugin *plugin)
     */
     prpl_info->join_chat = gowhatsapp_join_chat;
     prpl_info->get_chat_name = gowhatsapp_get_chat_name;
+    prpl_info->find_blist_chat = gowhatsapp_find_blist_chat;
     /*
-    prpl_info->find_blist_chat = discord_find_chat;
     prpl_info->chat_invite = discord_chat_invite;
     */
     prpl_info->chat_send = gowhatsapp_send_chat;
