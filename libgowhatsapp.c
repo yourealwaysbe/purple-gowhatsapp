@@ -362,7 +362,7 @@ gowhatsapp_set_chat_topic(PurpleConnection *pc, int id, const char *topic)
  */
 static char *gowhatsapp_get_chat_name(GHashTable *components)
 {
-    const char *jid= g_hash_table_lookup(components, "remoteJid");
+    const char *jid = g_hash_table_lookup(components, "remoteJid");
     return g_strdup(jid);
 }
 
