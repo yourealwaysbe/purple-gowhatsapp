@@ -294,47 +294,37 @@ static GList * gowhatsapp_chat_info(PurpleConnection *pc)
     return infos;
 }
 
-/*
- * Deserialized in gowhatsapp_chat_info_defaults
- */
 static gchar *
 gowhatsapp_roomlist_serialize(PurpleRoomlistRoom *room) {
     GList *fields = purple_roomlist_room_get_fields(room);
-
     const gchar *remoteJid = g_list_nth_data(fields, 0);
-    const gchar *topic = g_list_nth_data(fields, 1);
-
-    return g_strdup_printf("%s %s", remoteJid, topic);
+    return g_strdup(remoteJid);
 }
 
-/*
- * Chat name deserialized from gowhatsapp_roomlist_serialize
- */
 static GHashTable * gowhatsapp_chat_info_defaults(
-    PurpleConnection *pc, const char *chat_name
+    PurpleConnection *pc, const char *remoteJid
 ) {
     GHashTable *defaults = g_hash_table_new_full(
         g_str_hash, g_str_equal, NULL, g_free
     );
 
-    if (chat_name != NULL) {
-        char *split = strchr(chat_name, ' ');
+    if (remoteJid != NULL) {
+        // don't really understand this chat name, assume it's just
+        // the remoteJid
+        g_hash_table_insert(defaults, "remoteJid", g_strdup(remoteJid));
 
-        if (split != NULL) {
-            int jid_len = split - chat_name;
-            char *remoteJid = g_strndup(chat_name, jid_len);
-            char *topic = g_strdup(split + 1);
-            g_hash_table_insert(defaults, "remoteJid", remoteJid);
-            g_hash_table_insert(defaults, "topic", topic);
-        } else {
-            // don't really understand this chat name, assume it's just
-            // the remoteJid
-            g_hash_table_insert(
-                defaults, "remoteJid", g_strdup(chat_name)
+        g_hash_table_insert(defaults, "topic", g_strdup(""));
+
+        PurpleAccount *account = purple_connection_get_account(pc);
+        PurpleChat *chat = purple_blist_find_chat(account, remoteJid);
+        if (chat != NULL) {
+            GHashTable *components = purple_chat_get_components(chat);
+            const gchar *topic = g_hash_table_lookup(
+                components, "topic"
             );
-            g_hash_table_insert(
-                defaults, "topic", g_strdup("")
-            );
+            if (topic != NULL) {
+                g_hash_table_insert(defaults, "topic", g_strdup(topic));
+            }
         }
     }
 
