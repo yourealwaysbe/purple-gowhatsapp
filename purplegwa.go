@@ -479,6 +479,7 @@ func connect_and_login(handler *waHandler, session *whatsapp.Session) {
 	} else {
 		wac, err = whatsapp.NewConn(timeout)
 	}
+	wac.SetClientVersion(3, 2123, 7)
 	handler.wac = wac
 	if err != nil {
 		wac = nil
