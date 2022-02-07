@@ -5,7 +5,7 @@ void
 gowhatsapp_login(PurpleAccount *account)
 {
     PurpleConnection *pc = purple_account_get_connection(account);
-    
+
     // this protocol does not support anything special right now
     PurpleConnectionFlags pc_flags;
     pc_flags = purple_connection_get_flags(pc);
@@ -22,7 +22,7 @@ gowhatsapp_login(PurpleAccount *account)
     char *username = (char *)purple_account_get_username(account); // cgo does not suport const
     char *user_dir = (char *)purple_user_dir(); // cgo does not suport const
     gowhatsapp_go_login(account, user_dir, username, (char *)credentials); // cgo does not suport const
-    
+
     gowhatsapp_receipts_init(pc);
 }
 
@@ -39,7 +39,7 @@ purple_account_set_credentials(PurpleAccount *account, char *credentials)
     // Pidgin stores the credentials in the account settings
     // in bitlbee, this has no effect
     purple_account_set_string(account, GOWHATSAPP_CREDENTIALS_KEY, credentials);
-    
+
     // bitlbee stores credentials in password field
     // in Pidgin, these lines have no effect
     purple_account_set_password(account, credentials);

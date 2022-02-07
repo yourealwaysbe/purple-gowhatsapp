@@ -70,7 +70,7 @@ gowhatsapp_roomlist_get_list(PurpleConnection *pc) {
     PurpleAccount *account = purple_connection_get_account(pc);
     PurpleRoomlist *roomlist = purple_roomlist_new(account);
     purple_roomlist_set_in_progress(roomlist, TRUE);
-    
+
     GList *fields = NULL;
     // order is important (see description)
     fields = g_list_append(fields, purple_roomlist_field_new(
@@ -82,12 +82,12 @@ gowhatsapp_roomlist_get_list(PurpleConnection *pc) {
      * It gets overwritten in purple_roomlist_room_join, see libpurple/roomlist.c.
      * Also, some services like spectrum expect the human readable group name to be "topic", 
      * see RoomlistProgress in https://github.com/SpectrumIM/spectrum2/blob/518ba5a/backends/libpurple/main.cpp#L1997
-     */ 
+     */
     fields = g_list_append(fields, purple_roomlist_field_new(
         PURPLE_ROOMLIST_FIELD_STRING, "Group Name", "topic", FALSE
     ));
     purple_roomlist_set_fields(roomlist, fields);
-    
+
     gowhatsapp_group_info_t *group_infos = gowhatsapp_go_get_joined_groups(account);
     for (gowhatsapp_group_info_t *group_info = group_infos; group_info->remoteJid != NULL; group_info++) {
         //purple_debug_info(GOWHATSAPP_NAME, "group_info: remoteJid: %s, name: %s, topic: %s", group_info->remoteJid, group_info->name, group_info->topic);
@@ -96,10 +96,10 @@ gowhatsapp_roomlist_get_list(PurpleConnection *pc) {
         // order is important (see description)
         purple_roomlist_room_add_field(roomlist, room, group_info->remoteJid);
         purple_roomlist_room_add_field(roomlist, room, group_info->name);
-        purple_roomlist_room_add_field(roomlist, room, group_info->topic);
+        //purple_roomlist_room_add_field(roomlist, room, group_info->topic);
 
         purple_roomlist_room_add(roomlist, room);
-        
+
         // purple_roomlist_room_add_field does a strdup, free strings here
         g_free(group_info->remoteJid);
         g_free(group_info->name);
@@ -146,6 +146,37 @@ GList * gowhatsapp_chat_info(PurpleConnection *pc)
     infos = g_list_append(infos, pce);
 
     return infos;
+}
+
+GHashTable * gowhatsapp_chat_info_defaults(
+    PurpleConnection *pc, const char *remoteJid
+) {
+    GHashTable *defaults = g_hash_table_new_full(
+        g_str_hash, g_str_equal, NULL, g_free
+    );
+
+    if (remoteJid != NULL) {
+        // don't really understand this chat name, assume it's just
+        // the remoteJid
+        g_hash_table_insert(defaults, "name", g_strdup(remoteJid));
+        g_hash_table_insert(defaults, "remoteJid", g_strdup(remoteJid));
+
+        g_hash_table_insert(defaults, "topic", g_strdup(""));
+
+        PurpleAccount *account = purple_connection_get_account(pc);
+        PurpleChat *chat = purple_blist_find_chat(account, remoteJid);
+        if (chat != NULL) {
+            GHashTable *components = purple_chat_get_components(chat);
+            const gchar *topic = g_hash_table_lookup(
+                components, "topic"
+            );
+            if (topic != NULL) {
+                g_hash_table_insert(defaults, "topic", g_strdup(topic));
+            }
+        }
+    }
+
+    return defaults;
 }
 
 /*
