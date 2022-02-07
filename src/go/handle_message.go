@@ -38,10 +38,18 @@ func (handler *Handler) handle_message(evt *events.Message) {
 	}
 
 	im := message.GetImageMessage()
+	if im != nil {
+		var filename = hex.EncodeToString(im.FileSha256) + extension_from_mimetype(im.Mimetype)
+		text += "[" + filename + "] "
+	}
 	if im != nil && im.Caption != nil {
 		text += *message.GetImageMessage().Caption
 	}
 	vm := message.GetVideoMessage()
+	if vm != nil {
+		var filename = hex.EncodeToString(vm.FileSha256) + extension_from_mimetype(vm.Mimetype)
+		text += "[" + filename + "]"
+    }
 	if vm != nil && vm.Caption != nil {
 		text += *message.GetVideoMessage().Caption
 	}
@@ -114,6 +122,7 @@ func (handler *Handler) handle_attachment(evt *events.Message) {
 	}
 	if err != nil {
 		purple_display_system_message(handler.account, chat, ms.IsGroup, fmt.Sprintf("Message contained an attachment, but the download failed: %#v", err))
+        fmt.Printf("Download failed %#v\n", err)
 		return
 	}
 	if filename != "" {
@@ -124,5 +133,6 @@ func (handler *Handler) handle_attachment(evt *events.Message) {
 			filename = fmt.Sprintf("%s_%s", sender.User, filename)
 		}
 		purple_handle_attachment(handler.account, chat, ms.IsGroup, sender.String(), data_type, filename, data)
+		//YOU LIKIO purple_handle_attachment(handler.account, sender.String(), filename, data)
 	}
 }
